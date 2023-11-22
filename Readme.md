@@ -8,6 +8,7 @@ It's still in early alpha stage.
 1. install milvus-lite: `python3 -m pip install milvus`
 2. run milvus-server: `milvus-server`
 3. run milvus-sql-proxy: `go run cmd/milvus-sql.go`
+4. run mysql client: `mysql -u root -h 127.0.0.1 -P 3306`
 
 ## Supported Commands
 - [x] show databases
