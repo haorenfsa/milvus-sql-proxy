@@ -1,0 +1,4 @@
+logLevel: info
+addr: "0.0.0.0:3306"
+milvus:
+  addr: "localhost:19530"

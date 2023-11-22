@@ -3,6 +3,27 @@ Milvus SQL Proxy is a proxy service that translates SQL queries into Milvus grpc
 
 It's still in early alpha stage.
 
+## Get Started
+
+1. install milvus-lite: `python3 -m pip install milvus`
+2. run milvus-server: `milvus-server`
+3. run milvus-sql-proxy: `go run cmd/milvus-sql.go`
+
+## Supported Commands
+- [x] show databases
+- [] create database
+- [] use database
+- [] drop database
+- [] show tables
+- [] create table
+- [] truncate table
+- [] insert
+- [] create index
+- [] load
+- [] release
+- [] select
+- [] delete
+
 ## What we want to implement
 
 To use MySQL protocol to connect to & operate [Milvus](https://milvus.io/)

@@ -16,23 +16,24 @@
 package pkg
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/flike/kingshard/mysql"
+	"github.com/milvus-io/milvus-sdk-go/v2/client"
 
 	"sync"
 
 	"github.com/flike/kingshard/backend"
-	"github.com/flike/kingshard/config"
 	"github.com/flike/kingshard/core/errors"
 	"github.com/flike/kingshard/core/golog"
 	"github.com/flike/kingshard/proxy/router"
+	pkgErr "github.com/pkg/errors"
 )
 
 type Schema struct {
@@ -52,7 +53,7 @@ const (
 )
 
 type Server struct {
-	cfg   *config.Config
+	cfg   *Config
 	addr  string
 	users map[string]string //user : psw
 
@@ -65,7 +66,6 @@ type Server struct {
 
 	counter *Counter
 	nodes   map[string]*backend.Node
-	schemas map[string]*Schema //user : schema of user
 
 	listener net.Listener
 	running  bool
@@ -89,35 +89,17 @@ func (s *Server) Status() string {
 	return status
 }
 
-func NewServer(cfg *config.Config) (*Server, error) {
+func NewServer(cfg *Config) (*Server, error) {
 	s := new(Server)
 
 	s.cfg = cfg
 	s.counter = new(Counter)
 	s.addr = cfg.Addr
-	s.users = make(map[string]string)
-	for _, user := range cfg.UserList {
-		s.users[user.User] = user.Password
-	}
+
+	golog.Info("server", "NewServer", "addr", 0, "addr", s.addr)
 	atomic.StoreInt32(&s.statusIndex, 0)
 	s.status[s.statusIndex] = Online
-	atomic.StoreInt32(&s.logSqlIndex, 0)
-	s.logSql[s.logSqlIndex] = cfg.LogSql
-	atomic.StoreInt32(&s.slowLogTimeIndex, 0)
-	s.slowLogTime[s.slowLogTimeIndex] = cfg.SlowLogTime
 	s.configVer = 0
-
-	if len(cfg.Charset) == 0 {
-		cfg.Charset = mysql.DEFAULT_CHARSET //utf8
-	}
-	cid, ok := mysql.CharsetIds[cfg.Charset]
-	if !ok {
-		return nil, errors.ErrInvalidCharset
-	}
-	//change the default charset
-	mysql.DEFAULT_CHARSET = cfg.Charset
-	mysql.DEFAULT_COLLATION_ID = cid
-	mysql.DEFAULT_COLLATION_NAME = mysql.Collations[cid]
 
 	var err error
 	netProto := "tcp"
@@ -143,8 +125,9 @@ func (s *Server) flushCounter() {
 	}
 }
 
-func (s *Server) newClientConn(co net.Conn) *ClientConn {
+func (s *Server) newClientConn(ctx context.Context, co net.Conn) (*ClientConn, error) {
 	c := new(ClientConn)
+	c.ctx = ctx
 	tcpConn := co.(*net.TCPConn)
 
 	//SetNoDelay controls whether the operating system should delay packet transmission
@@ -166,6 +149,19 @@ func (s *Server) newClientConn(co net.Conn) *ClientConn {
 	c.pkg = mysql.NewPacketIO(tcpConn)
 	// c.proxy = s
 
+	var err error
+	cfg := s.cfg
+	milvusCfg := client.Config{
+		Address:  cfg.Milvus.Address,
+		Username: cfg.Milvus.Username,
+		Password: cfg.Milvus.Password,
+		APIKey:   cfg.Milvus.APIKey,
+	}
+	c.upstream, err = client.NewClient(ctx, milvusCfg)
+	if err != nil {
+		return nil, pkgErr.Wrap(err, "connect to milvus failed")
+	}
+
 	c.pkg.Sequence = 0
 
 	c.connectionId = atomic.AddUint32(&baseConnId, 1)
@@ -184,12 +180,19 @@ func (s *Server) newClientConn(co net.Conn) *ClientConn {
 	c.stmtId = 0
 	c.stmts = make(map[uint32]*Stmt)
 
-	return c
+	return c, nil
 }
 
 func (s *Server) onConn(c net.Conn) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	s.counter.IncrClientConns()
-	conn := s.newClientConn(c) //新建一个conn
+	conn, err := s.newClientConn(ctx, c) //新建一个conn
+	if err != nil {
+		conn.writeError(err)
+		conn.Close()
+		return
+	}
 
 	defer func() {
 		err := recover()
@@ -213,8 +216,6 @@ func (s *Server) onConn(c net.Conn) {
 		conn.Close()
 		return
 	}
-
-	conn.schema = s.GetSchema(conn.user)
 
 	conn.Run()
 }
@@ -244,41 +245,6 @@ func (s *Server) ChangeProxy(v string) error {
 	return nil
 }
 
-func (s *Server) ChangeLogSql(v string) error {
-	v = strings.ToLower(v)
-	if v != golog.LogSqlOn && v != golog.LogSqlOff {
-		return errors.ErrCmdUnsupport
-	}
-	if s.logSqlIndex == 0 {
-		s.logSql[1] = v
-		atomic.StoreInt32(&s.logSqlIndex, 1)
-	} else {
-		s.logSql[0] = v
-		atomic.StoreInt32(&s.logSqlIndex, 0)
-	}
-	s.cfg.LogSql = v
-
-	return nil
-}
-
-func (s *Server) ChangeSlowLogTime(v string) error {
-	tmp, err := strconv.Atoi(v)
-	if err != nil {
-		return err
-	}
-
-	if s.slowLogTimeIndex == 0 {
-		s.slowLogTime[1] = tmp
-		atomic.StoreInt32(&s.slowLogTimeIndex, 1)
-	} else {
-		s.slowLogTime[0] = tmp
-		atomic.StoreInt32(&s.slowLogTimeIndex, 0)
-	}
-	s.cfg.SlowLogTime = tmp
-
-	return err
-}
-
 func (s *Server) Run() error {
 	s.running = true
 
@@ -303,107 +269,6 @@ func (s *Server) Close() {
 	if s.listener != nil {
 		s.listener.Close()
 	}
-}
-
-func (s *Server) DeleteSlave(node string, addr string) error {
-	addr = strings.Split(addr, backend.WeightSplit)[0]
-	n := s.GetNode(node)
-	if n == nil {
-		return fmt.Errorf("invalid node %s", node)
-	}
-
-	if err := n.DeleteSlave(addr); err != nil {
-		return err
-	}
-
-	//sync node slave to global config
-	for i, v1 := range s.cfg.Nodes {
-		if node == v1.Name {
-			s1 := strings.Split(v1.Slave, backend.SlaveSplit)
-			s2 := make([]string, 0, len(s1)-1)
-			for _, v2 := range s1 {
-				hostPort := strings.Split(v2, backend.WeightSplit)[0]
-				if addr != hostPort {
-					s2 = append(s2, v2)
-				}
-			}
-			s.cfg.Nodes[i].Slave = strings.Join(s2, backend.SlaveSplit)
-		}
-	}
-
-	return nil
-}
-
-func (s *Server) AddSlave(node string, addr string) error {
-	n := s.GetNode(node)
-	if n == nil {
-		return fmt.Errorf("invalid node %s", node)
-	}
-
-	if err := n.AddSlave(addr); err != nil {
-		return err
-	}
-
-	//sync node slave to global config
-	for i, v1 := range s.cfg.Nodes {
-		if v1.Name == node {
-			s1 := strings.Split(v1.Slave, backend.SlaveSplit)
-			s1 = append(s1, addr)
-			s.cfg.Nodes[i].Slave = strings.Join(s1, backend.SlaveSplit)
-		}
-	}
-
-	return nil
-}
-
-func (s *Server) UpMaster(node string, addr string) error {
-	n := s.GetNode(node)
-	if n == nil {
-		return fmt.Errorf("invalid node %s", node)
-	}
-
-	return n.UpMaster(addr)
-}
-
-func (s *Server) UpSlave(node string, addr string) error {
-	n := s.GetNode(node)
-	if n == nil {
-		return fmt.Errorf("invalid node %s", node)
-	}
-
-	return n.UpSlave(addr)
-}
-
-func (s *Server) DownMaster(node, masterAddr string) error {
-	n := s.GetNode(node)
-	if n == nil {
-		return fmt.Errorf("invalid node %s", node)
-	}
-	return n.DownMaster(masterAddr, backend.ManualDown)
-}
-
-func (s *Server) DownSlave(node, slaveAddr string) error {
-	n := s.GetNode(node)
-	if n == nil {
-		return fmt.Errorf("invalid node [%s].", node)
-	}
-	return n.DownSlave(slaveAddr, backend.ManualDown)
-}
-
-func (s *Server) GetNode(name string) *backend.Node {
-	return s.nodes[name]
-}
-
-func (s *Server) GetAllNodes() map[string]*backend.Node {
-	return s.nodes
-}
-
-func (s *Server) GetSchema(user string) *Schema {
-	return s.schemas[user]
-}
-
-func (s *Server) GetSlowLogTime() int {
-	return s.slowLogTime[s.slowLogTimeIndex]
 }
 
 func (s *Server) GetMonitorData() map[string]map[string]string {

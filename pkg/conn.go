@@ -17,6 +17,7 @@ package pkg
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -27,16 +28,20 @@ import (
 	"github.com/flike/kingshard/core/golog"
 	"github.com/flike/kingshard/core/hack"
 	"github.com/flike/kingshard/mysql"
+	"github.com/milvus-io/milvus-sdk-go/v2/client"
 )
 
 // client <-> Milvus
 type ClientConn struct {
+	ctx context.Context
+
 	sync.Mutex
 
 	pkg *mysql.PacketIO
 
 	c net.Conn
 
+	upstream client.Client
 	// proxy *Server
 
 	capability uint32

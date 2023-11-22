@@ -23,7 +23,7 @@ import (
 
 	"github.com/flike/kingshard/core/errors"
 	"github.com/flike/kingshard/core/golog"
-	"github.com/flike/kingshard/sqlparser"
+	"github.com/xwb1989/sqlparser"
 )
 
 /*处理query语句*/
@@ -57,17 +57,17 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	}
 
 	switch v := stmt.(type) {
-	case *sqlparser.Select:
-		return c.handleSelect(v, nil)
-	case *sqlparser.Insert:
-		return c.handleExec(stmt, nil)
-	case *sqlparser.Update:
-		return c.handleExec(stmt, nil)
-	case *sqlparser.Delete:
-		return c.handleExec(stmt, nil)
-	case *sqlparser.Replace:
-		return c.handleExec(stmt, nil)
-		// TODO:
+	case *sqlparser.Show:
+		return c.handleShow(v, nil)
+	// TODO:
+	// case *sqlparser.Select:
+	// return c.handleSelect(v, nil)
+	// case *sqlparser.Insert:
+	// 	return c.handleExec(stmt, nil)
+	// case *sqlparser.Update:
+	// 	return c.handleExec(stmt, nil)
+	// case *sqlparser.Delete:
+	// 	return c.handleExec(stmt, nil)
 	// case *sqlparser.Set:
 	// 	return c.handleSet(v, sql)
 	// case *sqlparser.Begin:
@@ -90,8 +90,8 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	// 	return c.handleUseDB(v.DB)
 	// case *sqlparser.SimpleSelect:
 	// 	return c.handleSimpleSelect(v)
-	case *sqlparser.Truncate:
-		return c.handleExec(stmt, nil)
+	// case *sqlparser.Truncate:
+	// 	return c.handleExec(stmt, nil)
 	default:
 		return fmt.Errorf("statement %T not support now", stmt)
 	}
