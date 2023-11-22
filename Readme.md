@@ -11,18 +11,18 @@ It's still in early alpha stage.
 
 ## Supported Commands
 - [x] show databases
-- [] create database
-- [] use database
-- [] drop database
-- [] show tables
-- [] create table
-- [] truncate table
-- [] insert
-- [] create index
-- [] load
-- [] release
-- [] select
-- [] delete
+- [ ] create database
+- [ ] use database
+- [ ] drop database
+- [ ] show tables
+- [ ] create table
+- [ ] truncate table
+- [ ] insert
+- [ ] create index
+- [ ] load
+- [ ] release
+- [ ] select
+- [ ] delete
 
 ## What we want to implement
 
