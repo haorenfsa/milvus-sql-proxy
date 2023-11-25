@@ -94,5 +94,5 @@ drop database mydb;
 ```
 
 # Thanks
-- github.com/xwb1989/sqlparser
+- http://github.com/xwb1989/sqlparser for the brilliant sql parser.
 - http://github.com/flike/kingshard for their sql proxy server framework.
