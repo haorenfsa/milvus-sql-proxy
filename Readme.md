@@ -17,7 +17,8 @@ It's still in early alpha stage.
 - [x] drop database
 - [x] show tables
 - [x] create table
-  - [x] create table
+  - [x] auto increment primary key
+  - [ ] with index
 - [ ] drop table
 - [ ] insert
 - [ ] create index
