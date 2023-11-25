@@ -33,4 +33,4 @@ require (
 	google.golang.org/protobuf v1.30.0 // indirect
 )
 
-replace github.com/xwb1989/sqlparser => /Users/zilliz/Desktop/github/sqlparser //github.com/haorenfsa/sqlparser v0.1.0-r1
+replace github.com/xwb1989/sqlparser => github.com/haorenfsa/sqlparser v0.1.0

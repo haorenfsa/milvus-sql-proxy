@@ -24,11 +24,11 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/flike/kingshard/backend"
 	"github.com/flike/kingshard/core/golog"
 	"github.com/flike/kingshard/core/hack"
 	"github.com/flike/kingshard/mysql"
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )
 
 // client <-> Milvus
@@ -41,7 +41,8 @@ type ClientConn struct {
 
 	c net.Conn
 
-	upstream client.Client
+	upstream    client.Client
+	tableSchema map[string]entity.Schema
 	// proxy *Server
 
 	capability uint32
@@ -56,11 +57,6 @@ type ClientConn struct {
 	db   string
 
 	salt []byte
-
-	nodes  map[string]*backend.Node
-	schema *Schema
-
-	txConns map[*backend.Node]*backend.BackendConn
 
 	closed bool
 
@@ -110,6 +106,7 @@ func (c *ClientConn) Close() error {
 		return nil
 	}
 
+	c.upstream.Close()
 	c.c.Close()
 
 	c.closed = true
@@ -250,14 +247,6 @@ func (c *ClientConn) readHandshakeResponse() error {
 	return nil
 }
 
-func (c *ClientConn) clean() {
-	if c.txConns != nil && len(c.txConns) > 0 {
-		for _, co := range c.txConns {
-			co.Close()
-		}
-	}
-}
-
 func (c *ClientConn) Run() {
 	defer func() {
 		r := recover()
@@ -273,7 +262,6 @@ func (c *ClientConn) Run() {
 
 		c.Close()
 	}()
-	defer c.clean()
 	for {
 		data, err := c.readPacket()
 

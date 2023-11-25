@@ -1,4 +1,11 @@
 logLevel: info
 addr: "0.0.0.0:3306"
 milvus:
-  addr: "localhost:19530"
+  addr: "http://localhost:19530"
+
+  # for zilliz cloud:
+  # addr: https://<host>:<port>
+  apiKey: ""
+  # you can also use user + password
+  user: ""
+  pass: ""

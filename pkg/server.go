@@ -138,14 +138,6 @@ func (s *Server) newClientConn(ctx context.Context, co net.Conn) (*ClientConn, e
 	tcpConn.SetNoDelay(false)
 	c.c = tcpConn
 
-	func() {
-		s.configUpdateMutex.RLock()
-		defer s.configUpdateMutex.RUnlock()
-		c.nodes = s.nodes
-		// c.proxy = s
-		c.configVer = s.configVer
-	}()
-
 	c.pkg = mysql.NewPacketIO(tcpConn)
 	// c.proxy = s
 
@@ -169,8 +161,6 @@ func (s *Server) newClientConn(ctx context.Context, co net.Conn) (*ClientConn, e
 	c.status = mysql.SERVER_STATUS_AUTOCOMMIT
 
 	c.salt, _ = mysql.RandomBuf(20)
-
-	c.txConns = make(map[*backend.Node]*backend.BackendConn)
 
 	c.closed = false
 
