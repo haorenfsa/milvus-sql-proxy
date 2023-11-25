@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/flike/kingshard/mysql"
@@ -10,45 +11,61 @@ import (
 )
 
 const (
-	DATABASES = "DATABASES"
+	DatabasesStr = "DATABASES"
+	TableStr     = "TABLES"
 )
 
 func (c *ClientConn) handleShow(stmt *sqlparser.Show, args []interface{}) error {
 	switch strings.ToUpper(stmt.Type) {
-	case DATABASES:
+	case DatabasesStr:
 		ret, err := c.upstream.ListDatabases(c.ctx)
 		if err != nil {
 			return mysql.NewError(mysql.ER_ABORTING_CONNECTION, errors.Wrap(err, "list databases failed").Error())
 		}
+		if len(ret) == 0 {
+			return c.writeOK(nil)
+		}
 		values := databasesToValues(ret)
-		r, err := c.buildResultset(nil, []string{"DATABASES"}, values)
+		r, err := c.buildResultset(nil, []string{DatabasesStr}, values)
+		if err != nil {
+			return mysql.NewError(mysql.ER_UNKNOWN_ERROR, errors.Wrap(err, "build resultset failed").Error())
+		}
+		return c.writeResultset(c.status, r)
+	case TableStr:
+		ret, err := c.upstream.ListCollections(c.ctx)
+		if err != nil {
+			return mysql.NewError(mysql.ER_ABORTING_CONNECTION, errors.Wrap(err, "list collections failed").Error())
+		}
+		values := collectionsToValues(ret)
+		r, err := c.buildResultset(nil, []string{TableStr}, values)
 		if err != nil {
 			return mysql.NewError(mysql.ER_UNKNOWN_ERROR, errors.Wrap(err, "build resultset failed").Error())
 		}
 		return c.writeResultset(c.status, r)
 	default:
-		return mysql.NewDefaultError(mysql.ER_UNKNOWN_ERROR, stmt.Type)
+		return mysql.NewError(mysql.ER_UNKNOWN_ERROR, fmt.Sprintf("show %s not supported", stmt.Type))
 	}
 
 }
 
 func databasesToValues(dbs []entity.Database) [][]interface{} {
-	column := make([]interface{}, 0, len(dbs))
+	rows := make([][]interface{}, 0, len(dbs))
 	for _, db := range dbs {
-		column = append(column, db.Name)
+		column := []interface{}{
+			db.Name,
+		}
+		rows = append(rows, column)
 	}
-	return [][]interface{}{column}
+	return rows
 }
 
-func formatCollections(cols []*entity.Collection) *mysql.Resultset {
-	var field = &mysql.Field{}
-	field.Name = []byte(DATABASES)
+func collectionsToValues(cols []*entity.Collection) [][]interface{} {
+	rows := make([][]interface{}, 0, len(cols))
 	for _, col := range cols {
-		field.Data = append(field.Data, []byte(col.Name)...)
+		column := []interface{}{
+			col.Name,
+		}
+		rows = append(rows, column)
 	}
-	return &mysql.Resultset{
-		Fields: []*mysql.Field{
-			field,
-		},
-	}
+	return rows
 }

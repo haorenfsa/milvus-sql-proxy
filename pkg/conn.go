@@ -315,9 +315,8 @@ func (c *ClientConn) dispatch(data []byte) error {
 		return c.handleQuery(hack.String(data))
 	case mysql.COM_PING:
 		return c.writeOK(nil)
-		// TODO:
-	// case mysql.COM_INIT_DB:
-	// 	return c.handleUseDB(hack.String(data))
+	case mysql.COM_INIT_DB:
+		return c.handleUseDB(hack.String(data), nil)
 	// case mysql.COM_FIELD_LIST:
 	// 	return c.handleFieldList(data)
 	// case mysql.COM_STMT_PREPARE:
@@ -337,8 +336,6 @@ func (c *ClientConn) dispatch(data []byte) error {
 		golog.Error("ClientConn", "dispatch", msg, 0)
 		return mysql.NewError(mysql.ER_UNKNOWN_ERROR, msg)
 	}
-
-	return nil
 }
 
 func (c *ClientConn) writeOK(r *mysql.Result) error {

@@ -48,17 +48,21 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	}()
 
 	sql = strings.TrimRight(sql, ";") //删除sql语句最后的分号
-
+	golog.Debug("conn", "handleQuery", sql, c.connectionId)
 	var stmt sqlparser.Statement
 	stmt, err = sqlparser.Parse(sql) //解析sql语句,得到的stmt是一个interface
 	if err != nil {
-		golog.Error("server", "parse", err.Error(), 0, "sql", sql)
+		golog.Error("conn", "parse", err.Error(), c.connectionId, "sql", sql)
 		return err
 	}
 
 	switch v := stmt.(type) {
 	case *sqlparser.Show:
 		return c.handleShow(v, nil)
+	case *sqlparser.DBDDL:
+		return c.handleDBDDL(v, nil)
+	case *sqlparser.DDL:
+		return c.handleDDL(v, nil)
 	// TODO:
 	// case *sqlparser.Select:
 	// return c.handleSelect(v, nil)

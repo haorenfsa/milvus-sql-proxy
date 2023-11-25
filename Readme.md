@@ -12,12 +12,13 @@ It's still in early alpha stage.
 
 ## Supported Commands
 - [x] show databases
-- [ ] create database
-- [ ] use database
-- [ ] drop database
-- [ ] show tables
-- [ ] create table
-- [ ] truncate table
+- [x] create database
+- [x] use database
+- [x] drop database
+- [x] show tables
+- [x] create table
+  - [x] create table
+- [ ] drop table
 - [ ] insert
 - [ ] create index
 - [ ] load
@@ -37,17 +38,18 @@ use mydb;
 
 -- create collection
 create table test (
-    id int64, 
-    vec vector);
+    id bigint AUTO_INCREMENT PRIMARY KEY, 
+    name varchar(255),
+    vec vector(32)); -- NOTE: zilliz cloud supports >=32 dimension
 
 -- insert vector
-insert into test values (1, [1.0, 2.0, 3.0, 4.0]);
+insert into test values (1, "jack", '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]');
 
 -- create vector index
-create HNSW index vec_idx on test (vec);
+create HNSW("L2") index vec_idx on test (vec);
 
 -- ANN search
-select id from test where vec like ANN(vec) limit 10;
+select id from test where vec like '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]' limit 10;
 
 -- delete data
 delete from test where id = 1;

@@ -100,6 +100,7 @@ func main() {
 	} else {
 		setLogLevel(cfg.LogLevel)
 	}
+	golog.Info("main", "main", "log level is", 0, "level", *logLevel)
 
 	var svr *pkg.Server
 	// var prometheusSvr *monitor.Prometheus

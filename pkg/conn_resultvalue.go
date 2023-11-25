@@ -21,6 +21,7 @@ import (
 	"github.com/flike/kingshard/core/errors"
 	"github.com/flike/kingshard/core/hack"
 	"github.com/flike/kingshard/mysql"
+	"github.com/flike/kingshard/sqlparser"
 )
 
 func formatValue(value interface{}) ([]byte, error) {
@@ -98,6 +99,10 @@ func (c *ClientConn) buildResultset(fields []*mysql.Field, names []string, value
 		} else {
 			return nil, errors.ErrInvalidArgument
 		}
+	}
+
+	if len(values) == 0 {
+		return newEmptyResultset(names), nil
 	}
 
 	var b []byte
@@ -179,11 +184,22 @@ func (c *ClientConn) writeResultset(status uint16, r *mysql.Resultset) error {
 		}
 	}
 
-	total, err = c.writeEOFBatch(total, status, true)
-	total = nil
-	if err != nil {
-		return err
+	_, err = c.writeEOFBatch(total, status, true)
+	return err
+}
+
+var nstring = sqlparser.String
+
+func newEmptyResultset(fields []string) *mysql.Resultset {
+	r := new(mysql.Resultset)
+	r.Fields = make([]*mysql.Field, len(fields))
+	for i := range fields {
+		r.Fields[i] = &mysql.Field{}
+		r.Fields[i].Name = hack.Slice(fields[i])
 	}
 
-	return nil
+	r.Values = make([][]interface{}, 0)
+	r.RowDatas = make([]mysql.RowData, 0)
+
+	return r
 }
