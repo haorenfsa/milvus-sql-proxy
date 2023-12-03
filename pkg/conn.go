@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"net"
 	"runtime"
 	"sync"
@@ -74,7 +75,7 @@ var DEFAULT_CAPABILITY uint32 = mysql.CLIENT_LONG_PASSWORD | mysql.CLIENT_LONG_F
 	mysql.CLIENT_CONNECT_WITH_DB | mysql.CLIENT_PROTOCOL_41 |
 	mysql.CLIENT_TRANSACTIONS | mysql.CLIENT_SECURE_CONNECTION
 
-var baseConnId uint32 = 10000
+var baseConnId uint32 = rand.Uint32()
 
 func (c *ClientConn) Handshake() error {
 	if err := c.writeInitialHandshake(); err != nil {
@@ -299,7 +300,7 @@ func (c *ClientConn) dispatch(data []byte) error {
 		// c.handleRollback()
 		c.Close()
 		return nil
-	case mysql.COM_QUERY:
+	case mysql.COM_QUERY, mysql.COM_FIELD_LIST:
 		return c.handleQuery(hack.String(data))
 	case mysql.COM_PING:
 		return c.writeOK(nil)

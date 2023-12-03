@@ -63,11 +63,11 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 		return c.handleDBDDL(v, nil)
 	case *sqlparser.DDL:
 		return c.handleDDL(v, nil)
-	// TODO:
-	// case *sqlparser.Select:
-	// return c.handleSelect(v, nil)
+	case *sqlparser.Select:
+		return c.handleSelect(v, nil)
 	case *sqlparser.Insert:
 		return c.handleInsert(v, nil)
+	// TODO:
 	// case *sqlparser.Update:
 	// 	return c.handleExec(stmt, nil)
 	// case *sqlparser.Delete:
@@ -99,12 +99,6 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	default:
 		return fmt.Errorf("statement %T not support now", stmt)
 	}
-
-	return nil
-}
-
-func (c *ClientConn) handleSelect(stmt *sqlparser.Select, args []interface{}) error {
-	panic("not implemented")
 }
 
 func (c *ClientConn) handleExec(stmt sqlparser.Statement, args []interface{}) error {

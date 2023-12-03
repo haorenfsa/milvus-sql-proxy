@@ -15,6 +15,7 @@
 package pkg
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -53,6 +54,8 @@ func formatValue(value interface{}) ([]byte, error) {
 		return strconv.AppendFloat(nil, float64(v), 'f', -1, 64), nil
 	case float64:
 		return strconv.AppendFloat(nil, float64(v), 'f', -1, 64), nil
+	case []float32:
+		return json.Marshal(v)
 	case []byte:
 		return v, nil
 	case string:
@@ -76,7 +79,7 @@ func formatField(field *mysql.Field, value interface{}) error {
 		field.Charset = 63
 		field.Type = mysql.MYSQL_TYPE_DOUBLE
 		field.Flag = mysql.BINARY_FLAG | mysql.NOT_NULL_FLAG
-	case string, []byte:
+	case string, []byte, []float32:
 		field.Charset = 33
 		field.Type = mysql.MYSQL_TYPE_VAR_STRING
 	default:

@@ -5,6 +5,7 @@ import (
 
 	"github.com/flike/kingshard/core/golog"
 	"github.com/flike/kingshard/mysql"
+	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 	"github.com/pkg/errors"
 	"github.com/xwb1989/sqlparser"
@@ -125,7 +126,25 @@ func (c *ClientConn) handleCreateTable(stmt *sqlparser.DDL, args []interface{}) 
 	if err != nil {
 		return mysql.NewError(mysql.ER_CANT_CREATE_TABLE, err.Error())
 	}
-	err = c.upstream.CreateCollection(c.ctx, milvusSchema.Schema, milvusSchema.ShardNum)
+	golog.Info("ddl", "handleCreateTable", "CreateCollection", 0)
+	// TODO: consistency level
+	err = c.upstream.CreateCollection(c.ctx, milvusSchema.Schema, milvusSchema.ShardNum, client.WithConsistencyLevel(entity.ClEventually))
+	if err != nil {
+		return mysql.NewError(mysql.ER_CANT_CREATE_TABLE, err.Error())
+	}
+	// TODO: use real
+	golog.Info("ddl", "handleCreateTable", "CreateIndexIvfFlat", 0)
+	index, err := entity.NewIndexIvfFlat(entity.IP, 128)
+	if err != nil {
+		return mysql.NewError(mysql.ER_CANT_CREATE_TABLE, err.Error())
+	}
+	golog.Info("ddl", "handleCreateTable", "CreateIndex", 0)
+	err = c.upstream.CreateIndex(c.ctx, milvusSchema.Schema.CollectionName, "vec", index, false)
+	if err != nil {
+		return mysql.NewError(mysql.ER_CANT_CREATE_TABLE, err.Error())
+	}
+	golog.Info("ddl", "handleCreateTable", "LoadCollection", 0)
+	err = c.upstream.LoadCollection(c.ctx, milvusSchema.Schema.CollectionName, false)
 	if err != nil {
 		return mysql.NewError(mysql.ER_CANT_CREATE_TABLE, err.Error())
 	}
@@ -133,6 +152,7 @@ func (c *ClientConn) handleCreateTable(stmt *sqlparser.DDL, args []interface{}) 
 }
 
 func (c *ClientConn) handleDropTable(stmt *sqlparser.DDL, args []interface{}) error {
+	golog.Info("ddl", "handleDropTable", "DropCollection", 0, stmt.Table.Name.String())
 	err := c.upstream.DropCollection(c.ctx, stmt.Table.Name.String())
 	if err != nil {
 		return mysql.NewError(mysql.ER_CANT_DROP_FIELD_OR_KEY, err.Error())

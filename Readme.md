@@ -1,5 +1,7 @@
 # milvus-sql-proxy
-Milvus SQL Proxy is a proxy service that translates SQL queries into Milvus grpc requests. Make integration with milvus easier.
+Milvus SQL Proxy is a proxy service that translates SQL queries into Milvus[https://milvus.io] grpc requests. Make integration with milvus easier.
+
+It can function as a client side sidecar proxy, or a server side proxy, so that you can use various sql driver to connect to milvus.
 
 It's still in early alpha stage.
 
@@ -21,11 +23,13 @@ It's still in early alpha stage.
   - [x] auto increment primary key
   - [ ] with index
 - [x] drop table
-- [ ] insert
+- [x] insert
 - [ ] create index
 - [ ] load
 - [ ] release
-- [ ] select
+- [x] select
+  - [x] scalar query
+  - [] vector search
 - [ ] delete
 
 ## What we want to implement
@@ -60,26 +64,25 @@ create table test (
     name varchar(255),
     vec vector(32)); -- NOTE: zilliz cloud supports >=32 dimension
 
+-- create vector index
+create HNSW("L2") index vec_idx on test (vec);
 
 -- insert vector
 insert into test (name, vec) values 
-    ("jack", vector(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32)),
-    ("tom", vector(2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33)),
-    ("lucy", vector(3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34)),
-    ("lily", vector(4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35)),
-    ("nova", vector(5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36)),
-    ("peter", vector(6,7,8,9,10,11,12,13,14,15,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,34,35,36,37,38)),
-    ("john", vector(7,8,9,10,11,12,13,14,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,32,33,34,35,36,37,38,39)),
-    ("jason", vector(8,9,10,11,12,13,15,16,17,18,19,20,21,22,23,24,25,26,27,29,30,31,32,33,34,35,36,37,38,39,40));
+    ("jack", json_vector("[1.0,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]")),
+    ("tom",  json_vector("[2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33]")),
+    ("lucy", json_vector("[3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34]")),
+    ("lily", json_vector("[4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35]")),
+    ("nova", json_vector("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36]")),
+    ("peter", json_vector("[6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,34,35,36,37,38]")),
+    ("john", json_vector("[7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,32,33,34,35,36,37,38,39]")),
+    ("jason", json_vector("[8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,29,30,31,32,33,34,35,36,37,38,39,40]"));
 /* output:
 Query OK, 8 row affected (0.10 sec)
 */
 
--- create vector index
-create HNSW("L2") index vec_idx on test (vec);
-
 -- ANN search
-select id from test where vec like vector(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32) limit 3;
+select id from test where vec like json_vector("[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]") limit 3;
 -- simple query
 select * from test where id=1;
 
