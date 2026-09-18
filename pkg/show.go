@@ -18,12 +18,15 @@ const (
 func (c *ClientConn) handleShow(stmt *sqlparser.Show, args []interface{}) error {
 	switch strings.ToUpper(stmt.Type) {
 	case DatabasesStr:
+		if c.describe {
+			return c.rows([]string{DatabasesStr}, nil)
+		}
 		ret, err := c.upstream.ListDatabases(c.ctx)
 		if err != nil {
 			return mysql.NewError(mysql.ER_ABORTING_CONNECTION, errors.Wrap(err, "list databases failed").Error())
 		}
 		if len(ret) == 0 {
-			return c.writeOK(nil)
+			return c.rows([]string{DatabasesStr}, nil)
 		}
 		values := databasesToValues(ret)
 		r, err := c.buildResultset(nil, []string{DatabasesStr}, values)
@@ -32,6 +35,9 @@ func (c *ClientConn) handleShow(stmt *sqlparser.Show, args []interface{}) error 
 		}
 		return c.writeResultset(c.status, r)
 	case TableStr:
+		if c.describe {
+			return c.rows([]string{TableStr}, nil)
+		}
 		ret, err := c.upstream.ListCollections(c.ctx)
 		if err != nil {
 			return mysql.NewError(mysql.ER_ABORTING_CONNECTION, errors.Wrap(err, "list collections failed").Error())

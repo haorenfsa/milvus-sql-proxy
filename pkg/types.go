@@ -1,8 +1,9 @@
 package pkg
 
-import "github.com/flike/kingshard/proxy/server"
+import "github.com/milvus-io/milvus-sdk-go/v2/entity"
 
-type (
-	Counter = server.Counter
-	Stmt    = server.Stmt
-)
+// MilvusSchema includes collection fields and its shard count.
+type MilvusSchema struct {
+	*entity.Schema
+	ShardNum int32
+}

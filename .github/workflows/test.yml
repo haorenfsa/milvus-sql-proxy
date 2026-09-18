@@ -1,0 +1,53 @@
+name: test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test -race ./...
+      - run: go vet ./...
+  milvus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Start isolated Milvus
+        run: |
+          docker run -d --name sqlproxy-milvus --security-opt seccomp:unconfined \
+            -e ETCD_USE_EMBED=true -e ETCD_DATA_DIR=/var/lib/milvus/etcd \
+            -e ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml \
+            -e COMMON_STORAGETYPE=local -e DEPLOY_MODE=STANDALONE \
+            -v "$PWD/testdata/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro" \
+            -p 127.0.0.1:19530:19530 -p 127.0.0.1:9091:9091 \
+            milvusdb/milvus:v2.6.2 milvus run standalone
+          for attempt in $(seq 1 120); do
+            if curl -fsS http://127.0.0.1:9091/healthz; then exit 0; fi
+            sleep 2
+          done
+          docker logs --tail 100 sqlproxy-milvus
+          exit 1
+      - name: Test both protocols against Milvus
+        env:
+          MILVUS_TEST_ADDR: localhost:19530
+        run: go test -race ./pkg -count=1 -v -coverprofile=coverage.out
+      - name: Milvus logs on failure
+        if: failure()
+        run: docker logs --tail 150 sqlproxy-milvus || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage.out

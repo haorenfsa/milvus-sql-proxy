@@ -1,11 +1,18 @@
 logLevel: info
-addr: "0.0.0.0:3306"
+# mysql, postgres, or both. The legacy addr setting is the MySQL listener.
+mode: both
+addr: "127.0.0.1:3306"
+postgresAddr: "127.0.0.1:5432"
+user: root
+password: ""
+queryTimeoutSeconds: 30
+# Optional frontend TLS (both protocols).
+# tlsCert: server.crt
+# tlsKey: server.key
 milvus:
   addr: "http://localhost:19530"
-
-  # for zilliz cloud:
-  # addr: https://<host>:<port>
+  # Zilliz Cloud: use an https endpoint plus apiKey, or user/pass.
   apiKey: ""
-  # you can also use user + password
   user: ""
   pass: ""
+  tlsSecure: false

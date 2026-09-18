@@ -22,7 +22,6 @@ import (
 	"github.com/flike/kingshard/core/errors"
 	"github.com/flike/kingshard/core/hack"
 	"github.com/flike/kingshard/mysql"
-	"github.com/flike/kingshard/sqlparser"
 )
 
 func formatValue(value interface{}) ([]byte, error) {
@@ -30,6 +29,8 @@ func formatValue(value interface{}) ([]byte, error) {
 		return hack.Slice("NULL"), nil
 	}
 	switch v := value.(type) {
+	case bool:
+		return strconv.AppendBool(nil, v), nil
 	case int8:
 		return strconv.AppendInt(nil, int64(v), 10), nil
 	case int16:
@@ -67,6 +68,12 @@ func formatValue(value interface{}) ([]byte, error) {
 
 func formatField(field *mysql.Field, value interface{}) error {
 	switch value.(type) {
+	case nil:
+		field.Type = mysql.MYSQL_TYPE_NULL
+		return nil
+	case bool:
+		field.Charset = 63
+		field.Type = mysql.MYSQL_TYPE_TINY
 	case int8, int16, int32, int64, int:
 		field.Charset = 63
 		field.Type = mysql.MYSQL_TYPE_LONGLONG
@@ -126,13 +133,17 @@ func (c *ClientConn) buildResultset(fields []*mysql.Field, names []string, value
 				} else {
 					field := &mysql.Field{}
 					r.Fields[j] = field
-					r.FieldNames[string(r.Fields[j].Name)] = j
 					field.Name = hack.Slice(names[j])
+					r.FieldNames[names[j]] = j
 					if err = formatField(field, value); err != nil {
 						return nil, err
 					}
 				}
 
+			}
+			if value == nil {
+				row = append(row, 0xfb)
+				continue
 			}
 			b, err = formatValue(value)
 			if err != nil {
@@ -151,47 +162,9 @@ func (c *ClientConn) buildResultset(fields []*mysql.Field, names []string, value
 }
 
 func (c *ClientConn) writeResultset(status uint16, r *mysql.Resultset) error {
-	c.affectedRows = int64(-1)
-	total := make([]byte, 0, 4096)
-	data := make([]byte, 4, 512)
-	var err error
-
-	columnLen := mysql.PutLengthEncodedInt(uint64(len(r.Fields)))
-
-	data = append(data, columnLen...)
-	total, err = c.writePacketBatch(total, data, false)
-	if err != nil {
-		return err
-	}
-
-	for _, v := range r.Fields {
-		data = data[0:4]
-		data = append(data, v.Dump()...)
-		total, err = c.writePacketBatch(total, data, false)
-		if err != nil {
-			return err
-		}
-	}
-
-	total, err = c.writeEOFBatch(total, status, false)
-	if err != nil {
-		return err
-	}
-
-	for _, v := range r.RowDatas {
-		data = data[0:4]
-		data = append(data, v...)
-		total, err = c.writePacketBatch(total, data, false)
-		if err != nil {
-			return err
-		}
-	}
-
-	_, err = c.writeEOFBatch(total, status, true)
-	return err
+	c.result = &mysql.Result{Resultset: r, Status: status}
+	return nil
 }
-
-var nstring = sqlparser.String
 
 func newEmptyResultset(fields []string) *mysql.Resultset {
 	r := new(mysql.Resultset)

@@ -1,101 +1,131 @@
-# milvus-sql-proxy
-Milvus SQL Proxy is a proxy service that translates SQL queries into Milvus[https://milvus.io] grpc requests. Make integration with milvus easier.
+# Milvus SQL Proxy
 
-It can function as a client side sidecar proxy, or a server side proxy, so that you can use various sql driver to connect to milvus.
+Connect MySQL or PostgreSQL clients to Milvus using a shared SQL execution layer.
+Both protocols can run together; each connection owns its own Milvus client and
+selected database. This is a Milvus adapter, not a relational database: joins,
+transactions and arbitrary SQL expressions are not supported.
 
-It's still in early alpha stage.
+## Run
 
+Requires Go 1.23+ and Milvus (integration-tested with 2.6.2).
 
-## Get Started
-
-1. install milvus-lite: `python3 -m pip install milvus`
-2. run milvus-server: `milvus-server`
-3. run milvus-sql-proxy: `go run cmd/milvus-sql.go`
-4. run mysql client: `mysql -u root -h 127.0.0.1 -P 3306`
-
-## Supported Commands
-- [x] show databases
-- [x] create database
-- [x] use database
-- [x] drop database
-- [x] show tables
-- [x] create table
-  - [x] auto increment primary key
-  - [ ] with index
-- [x] drop table
-- [x] insert
-- [ ] create index
-- [ ] load
-- [ ] release
-- [x] select
-  - [x] scalar query
-  - [] vector search
-- [ ] delete
-
-## What we want to implement
-
-To use MySQL protocol to connect to & operate [Milvus](https://milvus.io/)
-
-```sql
-show databases;
-/* output:
-+-----------+
-| DATABASES |
-+-----------+
-| default   |
-+-----------+
-1 rows in set (0.01 sec)
-*/
-
--- create database
-create database mydb;
-/* output:
-Query OK, 1 row affected (0.04 sec)
-*/
-
-use mydb;
-/* output:
-Database changed
-*/
-
--- create collection
-create table test (
-    id bigint AUTO_INCREMENT PRIMARY KEY, 
-    name varchar(255),
-    vec vector(32)); -- NOTE: zilliz cloud supports >=32 dimension
-
--- create vector index
-create HNSW("L2") index vec_idx on test (vec);
-
--- insert vector
-insert into test (name, vec) values 
-    ("jack", json_vector("[1.0,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]")),
-    ("tom",  json_vector("[2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33]")),
-    ("lucy", json_vector("[3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34]")),
-    ("lily", json_vector("[4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35]")),
-    ("nova", json_vector("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36]")),
-    ("peter", json_vector("[6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,34,35,36,37,38]")),
-    ("john", json_vector("[7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,32,33,34,35,36,37,38,39]")),
-    ("jason", json_vector("[8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,29,30,31,32,33,34,35,36,37,38,39,40]"));
-/* output:
-Query OK, 8 row affected (0.10 sec)
-*/
-
--- ANN search
-select id from test where vec like json_vector("[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]") limit 3;
--- simple query
-select * from test where id=1;
-
--- delete data
-delete from test where id = 1;
-
--- delete collection
-truncate table test;
-
--- drop database
-drop database mydb;
+```sh
+go run ./cmd -config config.yaml
+mysql -h 127.0.0.1 -P 3306 -u root default
+psql 'postgresql://root@127.0.0.1:5432/default?sslmode=disable'
 ```
 
-# Thanks
-- http://github.com/xwb1989/sqlparser for the brilliant sql parser.
-- http://github.com/flike/kingshard for their sql proxy server framework.
+`mode` is `mysql`, `postgres`, or `both`; omitted mode preserves the original
+MySQL-only behavior. `addr` is the MySQL listener and `postgresAddr` is the
+PostgreSQL listener. The sample runs both, bound to loopback. Set `user` and
+`password` to authenticate SQL clients; these are separate from Milvus credentials.
+For network access, configure a password and frontend `tlsCert`/`tlsKey`, and
+require TLS in clients. PostgreSQL uses password authentication; without TLS the
+password travels in cleartext. The proxy does not expose per-user Milvus RBAC.
+`milvus.tlsSecure` enables TLS to Milvus; HTTPS endpoints also enable it.
+
+Commands time out after `queryTimeoutSeconds` (default 30). Increase this for
+large synchronous index builds, load, or flush operations. A timed-out Milvus
+mutation may have been accepted; inspect its state before retrying.
+
+## Supported SQL
+
+The same SQL subset is available on both ports. MySQL text and prepared/binary
+queries are supported. PostgreSQL simple and extended queries (Parse, Bind,
+Describe, Execute, Sync), `$n` parameters, text/binary scalar values and quoted
+identifiers are supported, including pgx's default prepared-statement mode.
+This does not emulate PostgreSQL system catalogs, ORM migrations or all dialect
+syntax. MySQL uses `?` parameters; PostgreSQL uses `$1`, `$2`, etc.
+
+| Area | Commands |
+| --- | --- |
+| Databases | `SHOW DATABASES`, `CREATE DATABASE db`, `USE db`, `DROP DATABASE db` |
+| Collections | `SHOW TABLES`, `CREATE TABLE`, `DESCRIBE table`, `DROP TABLE` |
+| Indexes | `CREATE INDEX`, `SHOW INDEXES FROM table`, `DROP INDEX name ON table` |
+| Memory/storage | `LOAD TABLE table`, `RELEASE TABLE table`, `FLUSH TABLE table` |
+| Partitions | `CREATE/DROP/LOAD/RELEASE PARTITION name ON table`, `SHOW PARTITIONS FROM table` |
+| Writes | Multi-row `INSERT`, full-row `UPSERT` (also `REPLACE`), filtered `DELETE` |
+| Reads | Field projection, `*`, scalar filters, `count(*)`, pagination, dense vector ANN |
+
+Field types: `BOOL`/`BOOLEAN` (also `TINYINT(1)`), `TINYINT`, `SMALLINT`, `INT`,
+`BIGINT`, `FLOAT`, `DOUBLE`, `VARCHAR(n)`, `JSON`, `VECTOR(dim)` (float32).
+Collections need one inline `BIGINT` or `VARCHAR` primary key and at least one
+vector field. Auto-ID uses `BIGINT AUTO_INCREMENT PRIMARY KEY`. All non-auto-ID
+fields must be supplied; SQL NULL/nullable fields and default values are not
+supported. Upsert requires an explicit primary key; auto-ID upserts are rejected.
+Vectors are JSON numeric arrays; dimensions and every row are validated before
+sending a write. JSON columns accept a string containing valid JSON.
+
+```sql
+CREATE DATABASE demo;
+USE demo;
+CREATE TABLE documents (
+    id BIGINT PRIMARY KEY,
+    title VARCHAR(256),
+    published BOOLEAN,
+    embedding VECTOR(3)
+);
+CREATE INDEX embedding_idx ON documents (embedding)
+    USING HNSW WITH (metric_type='COSINE', M=16, efConstruction=200);
+INSERT INTO documents VALUES
+    (1, 'first', true, json_vector('[1,0,0]')),
+    (2, 'second', false, json_vector('[0,1,0]'));
+LOAD TABLE documents;
+
+SELECT id, title FROM documents WHERE published=true AND id IN (1,2) LIMIT 10;
+SELECT count(*) FROM documents WHERE id>=1;
+SELECT id, title, _distance FROM documents
+    WHERE embedding LIKE json_vector('[1,0,0]') AND published=true LIMIT 3;
+UPSERT INTO documents VALUES (2, 'updated', true, json_vector('[0,0,1]'));
+DELETE FROM documents WHERE id=2;
+
+RELEASE TABLE documents;
+DROP INDEX embedding_idx ON documents;
+DROP TABLE documents;
+USE default;
+DROP DATABASE demo;
+```
+
+Create does **not** implicitly index or load. Index methods: `FLAT`, `HNSW`,
+`IVF_FLAT`, `AUTOINDEX`, scalar `INVERTED`. Dense metrics: `L2` (default), `IP`,
+`COSINE`. Search uses the field's actual index metric, returns nearest neighbors
+in Milvus order and optionally `_distance` (distance/similarity according to the
+metric). Only one positive vector predicate is allowed, optionally combined with
+scalar predicates using `AND`; vector predicates inside `OR` or `NOT` are rejected.
+Writes and searches currently target the default partition.
+
+Scalar predicates: `=`, `!=`, `<>`, `<`, `<=`, `>`, `>=`, `IN`, `NOT IN`, `LIKE`,
+`AND`, `OR`, `NOT`, parentheses. `LIMIT count OFFSET offset` and `LIMIT offset,count`
+are supported; default limit 100, maximum limit + offset 16384. `LIMIT 0` returns
+metadata and no rows. Count has no pagination. Query/search use strong consistency.
+SDK v2 does not return deleted row count, so DELETE reports 0 affected rows even
+when matching entities were removed.
+
+Unsupported clauses return errors: aliases, joins, qualified collection names,
+DISTINCT, GROUP BY, HAVING, ORDER BY, transactions, UPDATE, NULL predicates,
+IF EXISTS / IF NOT EXISTS, schema alterations, multi-statement requests and
+arbitrary functions. Database selection is through startup database or `USE`.
+Sparse/binary vectors, hybrid search/reranking, RBAC and bulk import are outside
+this SQL subset. PostgreSQL cancellation packets are not supported; server query
+timeouts and connection/server shutdown bound execution.
+
+## Test
+
+```sh
+go test -race ./...
+go vet ./...
+# Point only at a disposable test Milvus; the test creates/removes its own databases.
+MILVUS_TEST_ADDR=localhost:19530 go test -race ./pkg -run TestMilvusIntegration -v
+```
+
+CI runs the lifecycle through both `database/sql` MySQL and pgx clients against a
+standalone Milvus container, including authentication failures and rejected SQL.
+Unit tests use isolated session mocks and real local protocol listeners.
+
+## Credits
+
+SQL grammar: [haorenfsa/sqlparser](https://github.com/haorenfsa/sqlparser), forked
+from [xwb1989/sqlparser](https://github.com/xwb1989/sqlparser). MySQL protocol:
+[go-mysql](https://github.com/go-mysql-org/go-mysql). PostgreSQL protocol:
+[pgx](https://github.com/jackc/pgx). Original result helpers derive from
+[kingshard](https://github.com/flike/kingshard).
