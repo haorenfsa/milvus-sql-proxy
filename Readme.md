@@ -130,3 +130,24 @@ from [xwb1989/sqlparser](https://github.com/xwb1989/sqlparser). MySQL protocol:
 [go-mysql](https://github.com/go-mysql-org/go-mysql). PostgreSQL protocol:
 [pgx](https://github.com/jackc/pgx). Original result helpers derive from
 [kingshard](https://github.com/flike/kingshard).
+
+### Executable E2E workflow
+
+The separate `e2e` workflow runs on pull requests, pushes to `main`, and manual
+dispatch. Its `mysql`, `postgres`, and `both` matrix builds the real proxy with
+race detection, starts Milvus 2.6.2, and launches the proxy through a generated
+configuration file. Each mode exercises the complete SQL lifecycle through
+network clients, rejects bad credentials, checks inactive listeners, and verifies
+clean SIGTERM shutdown and released ports. Proxy/Milvus logs and test output are
+uploaded as `e2e-<mode>` artifacts, including on failure.
+
+Run one mode locally against a **disposable** Milvus:
+
+```sh
+go build -race -o /tmp/milvus-sql-proxy ./cmd
+MILVUS_TEST_ADDR=localhost:19530 E2E_PROXY_BINARY=/tmp/milvus-sql-proxy \
+  E2E_MODE=both go test -race ./pkg -run '^TestBinaryE2E$' -count=1 -timeout=5m -v
+```
+
+Set `E2E_ARTIFACT_DIR` to retain local diagnostics; otherwise tests use their
+temporary directory. Tests only remove the uniquely named databases they create.

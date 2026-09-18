@@ -1,0 +1,67 @@
+name: e2e
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  binary:
+    name: binary (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [mysql, postgres, both]
+    env:
+      MILVUS_TEST_ADDR: localhost:19530
+      E2E_MODE: ${{ matrix.mode }}
+      E2E_PROXY_BINARY: ${{ runner.temp }}/milvus-sql-proxy
+      E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build actual proxy executable with race detection
+        run: |
+          mkdir -p "$E2E_ARTIFACT_DIR"
+          go build -race -o "$E2E_PROXY_BINARY" ./cmd
+      - name: Start disposable Milvus
+        shell: bash
+        run: |
+          docker run -d --name sqlproxy-e2e-milvus --security-opt seccomp:unconfined \
+            -e ETCD_USE_EMBED=true -e ETCD_DATA_DIR=/var/lib/milvus/etcd \
+            -e ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml \
+            -e COMMON_STORAGETYPE=local -e DEPLOY_MODE=STANDALONE \
+            -v "$PWD/testdata/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro" \
+            -p 127.0.0.1:19530:19530 -p 127.0.0.1:9091:9091 \
+            milvusdb/milvus:v2.6.2 milvus run standalone
+          for attempt in $(seq 1 120); do
+            if curl --max-time 2 -fsS http://127.0.0.1:9091/healthz; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Exercise CLI, configuration, SQL lifecycle and shutdown
+        shell: bash
+        run: |
+          go test -race ./pkg -run '^TestBinaryE2E$' -count=1 -timeout=5m -v 2>&1 | tee "$E2E_ARTIFACT_DIR/test.log"
+      - name: Collect Milvus diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$E2E_ARTIFACT_DIR"
+          docker logs sqlproxy-e2e-milvus > "$E2E_ARTIFACT_DIR/milvus.log" 2>&1 || true
+          docker inspect sqlproxy-e2e-milvus > "$E2E_ARTIFACT_DIR/milvus-inspect.json" 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-${{ matrix.mode }}
+          path: ${{ env.E2E_ARTIFACT_DIR }}
+          retention-days: 7
