@@ -7,7 +7,7 @@ transactions and arbitrary SQL expressions are not supported.
 
 ## Roadmap
 
-See the [Milvus 2.6 full-feature roadmap](ROADMAP.md) for staged delivery,
+See the [Milvus 2.6 full-feature roadmap](ROADMAP.md) ([中文版](ROADMAP-cn.md)) for staged delivery,
 version boundaries, dual-protocol acceptance criteria, and the API inventory.
 Planned features are not current support claims.
 
