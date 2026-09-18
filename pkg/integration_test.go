@@ -136,7 +136,7 @@ func TestMilvusIntegration(t *testing.T) {
 			}()
 			mustExec("USE " + dbname)
 			mustExec("CREATE TABLE items (id bigint PRIMARY KEY, name varchar(100), enabled bool, score double, meta json, embedding vector(3))")
-			mustExec("CREATE INDEX embedding_idx ON items (embedding) USING FLAT WITH (metric_type='L2')")
+			mustExec("CREATE INDEX embedding_idx ON items (embedding) USING HNSW WITH (metric_type='L2', M=16, efConstruction=100)")
 			mustExec("INSERT INTO items VALUES (1,'one',true,1.5,'{\"tag\":1}',json_vector('[1,0,0]')), (2,'two',false,2.5,'{\"tag\":2}',json_vector('[0,1,0]'))")
 			mustExec("LOAD TABLE items")
 			if v := mustQuery("SHOW INDEXES FROM items"); len(v) != 1 {
@@ -181,6 +181,21 @@ func TestMilvusIntegration(t *testing.T) {
 			mustExec("FLUSH TABLE items")
 			mustExec("RELEASE TABLE items")
 			mustExec("DROP INDEX embedding_idx ON items")
+			for _, method := range []string{"FLAT", "IVF_FLAT", "AUTOINDEX"} {
+				mustExec("CREATE INDEX embedding_idx ON items (embedding) USING " + method + " WITH (metric_type='L2')")
+				mustExec("LOAD TABLE items")
+				if v := mustQuery("SELECT id FROM items WHERE embedding LIKE json_vector('[1,0,0]') LIMIT 1"); len(v) != 1 {
+					t.Fatal(method, v)
+				}
+				mustExec("RELEASE TABLE items")
+				mustExec("DROP INDEX embedding_idx ON items")
+			}
+			mustExec("CREATE INDEX name_idx ON items (name) USING INVERTED")
+			if v := mustQuery("SHOW INDEXES FROM items"); len(v) != 1 {
+				t.Fatal(v)
+			}
+			mustExec("DROP INDEX name_idx ON items")
+
 			mustExec("CREATE PARTITION extra ON items")
 			if v := mustQuery("SHOW PARTITIONS FROM items"); len(v) != 2 {
 				t.Fatal(v)

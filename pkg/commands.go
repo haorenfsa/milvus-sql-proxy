@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
@@ -128,7 +129,11 @@ func (c *ClientConn) handleMilvusCommand(sql string) (bool, error) {
 				params["nlist"] = "128"
 			}
 		}
-		e := c.upstream.CreateIndex(c.ctx, m[2], m[3], sqlIndex{m[1], params["index_type"], params}, false, client.WithIndexName(m[1]))
+		idx, err := buildIndex(params)
+		if err != nil {
+			return true, err
+		}
+		e := c.upstream.CreateIndex(c.ctx, m[2], m[3], sqlIndex{m[1], params["index_type"], idx.Params()}, false, client.WithIndexName(m[1]))
 		if e != nil {
 			return true, e
 		}
@@ -196,4 +201,48 @@ func (c *ClientConn) handleMilvusCommand(sql string) (bool, error) {
 		return true, c.rows(names, rows)
 	}
 	return false, nil
+}
+
+func buildIndex(params map[string]string) (entity.Index, error) {
+	kind := params["index_type"]
+	metric := entity.MetricType(params["metric_type"])
+	allowed := map[string]bool{"index_type": true, "metric_type": kind != "INVERTED"}
+	switch kind {
+	case "HNSW":
+		allowed["M"] = true
+		allowed["efConstruction"] = true
+	case "IVF_FLAT":
+		allowed["nlist"] = true
+	}
+	for key := range params {
+		if !allowed[key] {
+			return nil, fmt.Errorf("parameter %s is not valid for %s", key, kind)
+		}
+	}
+	switch kind {
+	case "FLAT":
+		return entity.NewIndexFlat(metric)
+	case "HNSW":
+		m, e := strconv.Atoi(params["M"])
+		if e != nil {
+			return nil, e
+		}
+		ef, e := strconv.Atoi(params["efConstruction"])
+		if e != nil {
+			return nil, e
+		}
+		return entity.NewIndexHNSW(metric, m, ef)
+	case "IVF_FLAT":
+		n, e := strconv.Atoi(params["nlist"])
+		if e != nil {
+			return nil, e
+		}
+		return entity.NewIndexIvfFlat(metric, n)
+	case "AUTOINDEX":
+		return entity.NewIndexAUTOINDEX(metric)
+	case "INVERTED":
+		return entity.NewGenericIndex("", entity.IndexType(kind), map[string]string{"index_type": kind, "params": "{}"}), nil
+	default:
+		return nil, fmt.Errorf("unsupported index type %s", kind)
+	}
 }
