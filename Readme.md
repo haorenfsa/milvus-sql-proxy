@@ -5,6 +5,12 @@ Both protocols can run together; each connection owns its own Milvus client and
 selected database. This is a Milvus adapter, not a relational database: joins,
 transactions and arbitrary SQL expressions are not supported.
 
+## Roadmap
+
+See the [Milvus 2.6 full-feature roadmap](ROADMAP.md) for staged delivery,
+version boundaries, dual-protocol acceptance criteria, and the API inventory.
+Planned features are not current support claims.
+
 ## Run
 
 Requires Go 1.23+ and Milvus (integration-tested with 2.6.2).
