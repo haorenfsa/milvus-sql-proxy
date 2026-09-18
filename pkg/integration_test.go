@@ -269,7 +269,11 @@ func cleanupMilvusDatabase(t *testing.T, mode, mysqlAddr, postgresAddr, name str
 	// Collections may already have been dropped by successful lifecycle steps.
 	execute("DROP TABLE multi")
 	execute("DROP TABLE items")
-	if err := execute("USE default"); err != nil {
+	defaultSQL := "USE `default`"
+	if mode == "postgres" {
+		defaultSQL = "USE \"default\""
+	}
+	if err := execute(defaultSQL); err != nil {
 		t.Error(err)
 		return
 	}

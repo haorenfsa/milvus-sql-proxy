@@ -82,7 +82,7 @@ DELETE FROM documents WHERE id=2;
 RELEASE TABLE documents;
 DROP INDEX embedding_idx ON documents;
 DROP TABLE documents;
-USE default;
+USE `default`; -- PostgreSQL: USE "default";
 DROP DATABASE demo;
 ```
 

@@ -21,8 +21,8 @@ jobs:
     env:
       MILVUS_TEST_ADDR: localhost:19530
       E2E_MODE: ${{ matrix.mode }}
-      E2E_PROXY_BINARY: ${{ runner.temp }}/milvus-sql-proxy
-      E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e
+      E2E_PROXY_BINARY: ${{ github.workspace }}/.e2e/milvus-sql-proxy
+      E2E_ARTIFACT_DIR: ${{ github.workspace }}/.e2e/artifacts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
