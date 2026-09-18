@@ -95,69 +95,28 @@ func formatField(field *mysql.Field, value interface{}) error {
 	return nil
 }
 
+// Result construction is transport-neutral: adapters encode rows on the wire.
 func (c *ClientConn) buildResultset(fields []*mysql.Field, names []string, values [][]interface{}) (*mysql.Resultset, error) {
-	var ExistFields bool
-	r := new(mysql.Resultset)
-
-	r.Fields = make([]*mysql.Field, len(names))
-	r.FieldNames = make(map[string]int, len(names))
-
-	//use the field def that get from true database
-	if len(fields) != 0 {
-		if len(r.Fields) == len(fields) {
-			ExistFields = true
-		} else {
-			return nil, errors.ErrInvalidArgument
-		}
+	if len(fields) != 0 && len(fields) != len(names) {
+		return nil, errors.ErrInvalidArgument
 	}
-
-	if len(values) == 0 {
-		return newEmptyResultset(names), nil
+	r := newEmptyResultset(names)
+	if len(fields) > 0 {
+		r.Fields = fields
 	}
-
-	var b []byte
-	var err error
-
-	for i, vs := range values {
-		if len(vs) != len(r.Fields) {
-			return nil, fmt.Errorf("row %d has %d column not equal %d", i, len(vs), len(r.Fields))
+	for i, row := range values {
+		if len(row) != len(names) {
+			return nil, fmt.Errorf("row %d has %d columns, expected %d", i, len(row), len(names))
 		}
-
-		var row []byte
-		for j, value := range vs {
-			//列的定义
-			if i == 0 {
-				if ExistFields {
-					r.Fields[j] = fields[j]
-					r.FieldNames[string(r.Fields[j].Name)] = j
-				} else {
-					field := &mysql.Field{}
-					r.Fields[j] = field
-					field.Name = hack.Slice(names[j])
-					r.FieldNames[names[j]] = j
-					if err = formatField(field, value); err != nil {
-						return nil, err
-					}
+		if i == 0 && len(fields) == 0 {
+			for j, v := range row {
+				if err := formatField(r.Fields[j], v); err != nil {
+					return nil, err
 				}
-
 			}
-			if value == nil {
-				row = append(row, 0xfb)
-				continue
-			}
-			b, err = formatValue(value)
-			if err != nil {
-				return nil, err
-			}
-
-			row = append(row, mysql.PutLengthEncodedString(b)...)
 		}
-
-		r.RowDatas = append(r.RowDatas, row)
 	}
-	//assign the values to the result
 	r.Values = values
-
 	return r, nil
 }
 
@@ -169,9 +128,13 @@ func (c *ClientConn) writeResultset(status uint16, r *mysql.Resultset) error {
 func newEmptyResultset(fields []string) *mysql.Resultset {
 	r := new(mysql.Resultset)
 	r.Fields = make([]*mysql.Field, len(fields))
+	r.FieldNames = make(map[string]int, len(fields))
 	for i := range fields {
 		r.Fields[i] = &mysql.Field{}
 		r.Fields[i].Name = hack.Slice(fields[i])
+		r.Fields[i].Type = mysql.MYSQL_TYPE_VAR_STRING
+		r.Fields[i].Charset = 33
+		r.FieldNames[fields[i]] = i
 	}
 
 	r.Values = make([][]interface{}, 0)

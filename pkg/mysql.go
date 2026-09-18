@@ -32,7 +32,11 @@ func (s *Server) serveMySQL(ctx context.Context, co net.Conn) {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		if conn.Conn != nil {
+			conn.Close()
+		}
+	}()
 	co.SetDeadline(time.Time{})
 	for {
 		if err := conn.HandleCommand(); err != nil {

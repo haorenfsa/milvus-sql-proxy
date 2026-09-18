@@ -77,6 +77,11 @@ func TestMilvusIntegration(t *testing.T) {
 						if e := rs.Scan(ptrs...); e != nil {
 							return nil, e
 						}
+						for i, v := range values {
+							if b, ok := v.([]byte); ok {
+								values[i] = string(b)
+							}
+						}
 						out = append(out, values)
 					}
 					return out, rs.Err()
@@ -121,6 +126,9 @@ func TestMilvusIntegration(t *testing.T) {
 			}
 			mustExec("CREATE DATABASE " + dbname)
 			defer func() {
+				exec("USE " + dbname)
+				exec("RELEASE TABLE items")
+				exec("DROP TABLE items")
 				exec("USE default")
 				if e := exec("DROP DATABASE " + dbname); e != nil {
 					t.Error(e)
