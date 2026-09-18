@@ -92,7 +92,8 @@ Create does **not** implicitly index or load. Index methods: `FLAT`, `HNSW`,
 in Milvus order and optionally the reserved `_distance` (distance/similarity according to the
 metric). Only one positive vector predicate is allowed, optionally combined with
 scalar predicates using `AND`; vector predicates inside `OR` or `NOT` are rejected.
-Writes and searches currently target the default partition.
+Inserts/upserts target the default partition. Query/search/delete have no partition
+selector; they follow Milvus behavior across the collection (searching loaded partitions).
 
 Scalar predicates: `=`, `!=`, `<>`, `<`, `<=`, `>`, `>=`, `IN`, `NOT IN`, `LIKE`,
 `AND`, `OR`, `NOT`, parentheses. `LIMIT count OFFSET offset` and `LIMIT offset,count`
