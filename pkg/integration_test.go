@@ -42,15 +42,21 @@ func TestMilvusIntegration(t *testing.T) {
 		t.Skip("set MILVUS_TEST_ADDR for disposable Milvus integration")
 	}
 	s := startTestServer(t, &Config{Mode: "both", Addr: "127.0.0.1:0", PostgresAddr: "127.0.0.1:0", User: "root", Password: "integration", QueryTimeoutSeconds: 90, Milvus: MilvusConfig{Address: addr}})
+	testMilvusLifecycle(t, s.listeners[0].Addr().String(), s.listeners[1].Addr().String(), []string{"mysql", "postgres"})
+}
+
+// Shared assertions are exercised both against the in-process server and the
+// independently built executable. No server internals are used below.
+func testMilvusLifecycle(t *testing.T, mysqlAddr, postgresAddr string, modes []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	for _, mode := range []string{"mysql", "postgres"} {
+	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
 			dbname := fmt.Sprintf("sqlproxy_%s_%d", mode, time.Now().UnixNano())
 			var exec func(string, ...interface{}) error
 			var query func(string, ...interface{}) ([][]interface{}, error)
 			if mode == "mysql" {
-				db, e := sql.Open("mysql", fmt.Sprintf("root:integration@tcp(%s)/default", s.listeners[0].Addr()))
+				db, e := sql.Open("mysql", fmt.Sprintf("root:integration@tcp(%s)/default", mysqlAddr))
 				if e != nil {
 					t.Fatal(e)
 				}
@@ -87,7 +93,7 @@ func TestMilvusIntegration(t *testing.T) {
 					return out, rs.Err()
 				}
 			} else {
-				pg, e := pgx.Connect(ctx, fmt.Sprintf("postgres://root:integration@%s/default?sslmode=disable", s.listeners[1].Addr()))
+				pg, e := pgx.Connect(ctx, fmt.Sprintf("postgres://root:integration@%s/default?sslmode=disable", postgresAddr))
 				if e != nil {
 					t.Fatal(e)
 				}
@@ -125,16 +131,7 @@ func TestMilvusIntegration(t *testing.T) {
 				return v
 			}
 			mustExec("CREATE DATABASE " + dbname)
-			defer func() {
-				exec("USE " + dbname)
-				exec("RELEASE TABLE items")
-				exec("DROP TABLE multi")
-				exec("DROP TABLE items")
-				exec("USE default")
-				if e := exec("DROP DATABASE " + dbname); e != nil {
-					t.Error(e)
-				}
-			}()
+			defer cleanupMilvusDatabase(t, mode, mysqlAddr, postgresAddr, dbname)
 			mustExec("USE " + dbname)
 			mustExec("CREATE TABLE items (id bigint PRIMARY KEY, name varchar(100), enabled bool, score double, meta json, embedding vector(3))")
 			mustExec("CREATE INDEX embedding_idx ON items (embedding) USING HNSW WITH (metric_type='L2', M=16, efConstruction=100)")
@@ -221,9 +218,9 @@ func TestMilvusIntegration(t *testing.T) {
 		})
 	}
 	// Incorrect credentials must fail both protocol handshakes.
-	for i, mode := range []string{"mysql", "postgres"} {
+	for _, mode := range modes {
 		if mode == "mysql" {
-			db, e := sql.Open("mysql", fmt.Sprintf("root:wrong@tcp(%s)/default", s.listeners[i].Addr()))
+			db, e := sql.Open("mysql", fmt.Sprintf("root:wrong@tcp(%s)/default", mysqlAddr))
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -232,7 +229,7 @@ func TestMilvusIntegration(t *testing.T) {
 			}
 			db.Close()
 		} else {
-			pg, e := pgx.Connect(ctx, fmt.Sprintf("postgres://root:wrong@%s/default?sslmode=disable", s.listeners[i].Addr()))
+			pg, e := pgx.Connect(ctx, fmt.Sprintf("postgres://root:wrong@%s/default?sslmode=disable", postgresAddr))
 			if e == nil {
 				pg.Close(ctx)
 				t.Fatal("PG accepted wrong password")
@@ -241,5 +238,46 @@ func TestMilvusIntegration(t *testing.T) {
 				t.Fatal(e)
 			}
 		}
+	}
+}
+
+// Cleanup must work even after the lifecycle context expires or its connection
+// is discarded by a driver. Only this test's uniquely named database is touched.
+func cleanupMilvusDatabase(t *testing.T, mode, mysqlAddr, postgresAddr, name string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var execute func(string) error
+	if mode == "mysql" {
+		db, err := sql.Open("mysql", fmt.Sprintf("root:integration@tcp(%s)/%s?timeout=5s", mysqlAddr, name))
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer db.Close()
+		db.SetMaxOpenConns(1)
+		execute = func(q string) error { _, err := db.ExecContext(ctx, q); return err }
+	} else {
+		pg, err := pgx.Connect(ctx, fmt.Sprintf("postgres://root:integration@%s/%s?sslmode=disable", postgresAddr, name))
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer pg.Close(context.Background())
+		execute = func(q string) error { _, err := pg.Exec(ctx, q); return err }
+	}
+	// Collections may already have been dropped by successful lifecycle steps.
+	execute("DROP TABLE multi")
+	execute("DROP TABLE items")
+	defaultSQL := "USE `default`"
+	if mode == "postgres" {
+		defaultSQL = "USE \"default\""
+	}
+	if err := execute(defaultSQL); err != nil {
+		t.Error(err)
+		return
+	}
+	if err := execute("DROP DATABASE " + name); err != nil {
+		t.Errorf("cleanup database %s: %v", name, err)
 	}
 }

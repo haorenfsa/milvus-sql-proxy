@@ -18,6 +18,8 @@ jobs:
           go test -race ./... -coverprofile=unit-coverage.out
           go tool cover -func=unit-coverage.out | awk '/^total:/ { print; gsub("%", "", $3); if ($3 < 90) exit 1 }'
       - run: go vet ./...
+      - name: Validate workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
   milvus:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -36,7 +38,7 @@ jobs:
             -v "$PWD/testdata/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro" \
             -p 127.0.0.1:19530:19530 -p 127.0.0.1:9091:9091 \
             milvusdb/milvus:v2.6.2 milvus run standalone
-          for attempt in $(seq 1 120); do
+          for ((attempt=1; attempt<=120; attempt++)); do
             if curl -fsS http://127.0.0.1:9091/healthz; then exit 0; fi
             sleep 2
           done
