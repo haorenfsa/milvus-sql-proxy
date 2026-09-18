@@ -94,8 +94,8 @@ func mysqlResult(r *legacy.Result, binary bool) (*mysql.Result, error) {
 	// Preserve field metadata for empty result sets as well as nonempty rows.
 	for i, f := range r.Fields {
 		if len(values) == 0 {
-			rs.Fields[i].Type = f.Type
-			rs.Fields[i].Charset = f.Charset
+			rs.Fields[i] = &mysql.Field{Name: append([]byte(nil), f.Name...), Type: f.Type, Charset: f.Charset}
+			rs.FieldNames[string(f.Name)] = i
 		}
 	}
 	out.Resultset = rs

@@ -54,6 +54,9 @@ func DDLToMilvusSchema(stmt *sqlparser.DDL) (*MilvusSchema, error) {
 			return nil, errors.New("duplicate field")
 		}
 		seen[f.Name] = true
+		if f.Name == "_distance" {
+			return nil, errors.New("_distance is reserved for vector search scores")
+		}
 		if !fieldIdentifier.MatchString(f.Name) {
 			return nil, errors.New("invalid field name")
 		}

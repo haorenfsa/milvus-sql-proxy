@@ -38,6 +38,9 @@ func (c *ClientConn) handleSelect(stmt *sqlparser.Select, _ []interface{}) error
 			pk = f.Name
 		}
 	}
+	if plan.vectorField != "" && schemaFields["_distance"] != nil {
+		return fmt.Errorf("_distance is reserved for vector search scores")
+	}
 	names := []string{}
 	types := []entity.FieldType{}
 	if len(stmt.SelectExprs) == 1 && sqlparser.String(stmt.SelectExprs[0]) == "*" {
@@ -48,6 +51,9 @@ func (c *ClientConn) handleSelect(stmt *sqlparser.Select, _ []interface{}) error
 	} else {
 		for _, expr := range stmt.SelectExprs {
 			name := sqlparser.String(expr)
+			if strings.EqualFold(name, "count(*)") {
+				name = "count(*)"
+			}
 			if name != "count(*)" {
 				name = expr.(*sqlparser.AliasedExpr).Expr.(*sqlparser.ColName).Name.String()
 			}
@@ -89,7 +95,7 @@ func (c *ClientConn) handleSelect(stmt *sqlparser.Select, _ []interface{}) error
 	outputs := []string{}
 	seen := map[string]bool{}
 	for _, n := range names {
-		if n != "_distance" && !seen[n] {
+		if (n != "_distance" || plan.vectorField == "") && !seen[n] {
 			outputs = append(outputs, n)
 			seen[n] = true
 		}
@@ -104,7 +110,7 @@ func (c *ClientConn) handleSelect(stmt *sqlparser.Select, _ []interface{}) error
 		if e != nil {
 			return e
 		}
-		indexes, e := c.upstream.DescribeIndex(c.ctx, plan.table, plan.vectorField)
+		indexes, e := c.vectorIndexes(plan.table, plan.vectorField)
 		if e != nil {
 			return e
 		}

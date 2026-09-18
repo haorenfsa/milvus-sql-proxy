@@ -128,6 +128,7 @@ func TestMilvusIntegration(t *testing.T) {
 			defer func() {
 				exec("USE " + dbname)
 				exec("RELEASE TABLE items")
+				exec("DROP TABLE multi")
 				exec("DROP TABLE items")
 				exec("USE default")
 				if e := exec("DROP DATABASE " + dbname); e != nil {
@@ -137,9 +138,10 @@ func TestMilvusIntegration(t *testing.T) {
 			mustExec("USE " + dbname)
 			mustExec("CREATE TABLE items (id bigint PRIMARY KEY, name varchar(100), enabled bool, score double, meta json, embedding vector(3))")
 			mustExec("CREATE INDEX embedding_idx ON items (embedding) USING HNSW WITH (metric_type='L2', M=16, efConstruction=100)")
+			mustExec("CREATE INDEX name_idx ON items (name) USING INVERTED")
 			mustExec("INSERT INTO items VALUES (1,'one',true,1.5,'{\"tag\":1}',json_vector('[1,0,0]')), (2,'two',false,2.5,'{\"tag\":2}',json_vector('[0,1,0]'))")
 			mustExec("LOAD TABLE items")
-			if v := mustQuery("SHOW INDEXES FROM items"); len(v) != 1 {
+			if v := mustQuery("SHOW INDEXES FROM items"); len(v) != 2 {
 				t.Fatalf("indexes: %v", v)
 			}
 			if v := mustQuery("DESCRIBE items"); len(v) != 6 {
@@ -151,7 +153,7 @@ func TestMilvusIntegration(t *testing.T) {
 			if v := mustQuery("SELECT id FROM items WHERE id=999"); len(v) != 0 {
 				t.Fatal(v)
 			}
-			if v := mustQuery("SELECT count(*) FROM items"); len(v) != 1 {
+			if v := mustQuery("SELECT COUNT(*) FROM items"); len(v) != 1 || fmt.Sprint(v[0][0]) != "2" {
 				t.Fatal(v)
 			}
 			if v := mustQuery("SELECT id,_distance FROM items WHERE embedding LIKE json_vector('[1,0,0]') LIMIT 1"); len(v) != 1 || fmt.Sprint(v[0][0]) != "1" {
@@ -164,8 +166,11 @@ func TestMilvusIntegration(t *testing.T) {
 			if v := mustQuery("SELECT id,name FROM items WHERE id="+placeholder, int64(2)); len(v) != 1 {
 				t.Fatalf("parameter query: %v", v)
 			}
+			if v := mustQuery("SELECT id,name FROM items WHERE id="+placeholder, int64(999)); len(v) != 0 {
+				t.Fatalf("empty prepared query: %v", v)
+			}
 			mustExec("UPSERT INTO items VALUES (2,'updated',true,3.5,'{}',json_vector('[0,0,1]'))")
-			if v := mustQuery("SELECT name FROM items WHERE id=2"); len(v) != 1 {
+			if v := mustQuery("SELECT name FROM items WHERE id=2"); len(v) != 1 || fmt.Sprint(v[0][0]) != "updated" {
 				t.Fatal(v)
 			}
 			mustExec("DELETE FROM items WHERE id=2")
@@ -180,6 +185,7 @@ func TestMilvusIntegration(t *testing.T) {
 			mustQuery("SELECT id FROM items WHERE id=1")
 			mustExec("FLUSH TABLE items")
 			mustExec("RELEASE TABLE items")
+			mustExec("DROP INDEX name_idx ON items")
 			mustExec("DROP INDEX embedding_idx ON items")
 			for _, method := range []string{"FLAT", "IVF_FLAT", "AUTOINDEX"} {
 				mustExec("CREATE INDEX embedding_idx ON items (embedding) USING " + method + " WITH (metric_type='L2')")
@@ -202,6 +208,16 @@ func TestMilvusIntegration(t *testing.T) {
 			}
 			mustExec("DROP PARTITION extra ON items")
 			mustExec("DROP TABLE items")
+			mustExec("CREATE TABLE multi (id BIGINT PRIMARY KEY, v1 VECTOR(3), v2 VECTOR(3))")
+			mustExec("CREATE INDEX i1 ON multi (v1) USING FLAT WITH (metric_type='L2')")
+			mustExec("CREATE INDEX i2 ON multi (v2) USING FLAT WITH (metric_type='IP')")
+			mustExec("INSERT INTO multi VALUES (1,json_vector('[1,0,0]'),json_vector('[0,1,0]')),(2,json_vector('[0,1,0]'),json_vector('[1,0,0]'))")
+			mustExec("LOAD TABLE multi")
+			if v := mustQuery("SELECT id FROM multi WHERE v2 LIKE json_vector('[1,0,0]') LIMIT 1"); len(v) != 1 || fmt.Sprint(v[0][0]) != "2" {
+				t.Fatalf("multi-vector index selection: %v", v)
+			}
+			mustExec("DROP TABLE multi")
+
 		})
 	}
 	// Incorrect credentials must fail both protocol handshakes.

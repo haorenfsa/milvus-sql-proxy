@@ -89,7 +89,7 @@ DROP DATABASE demo;
 Create does **not** implicitly index or load. Index methods: `FLAT`, `HNSW`,
 `IVF_FLAT`, `AUTOINDEX`, scalar `INVERTED`. Dense metrics: `L2` (default), `IP`,
 `COSINE`. Search uses the field's actual index metric, returns nearest neighbors
-in Milvus order and optionally `_distance` (distance/similarity according to the
+in Milvus order and optionally the reserved `_distance` (distance/similarity according to the
 metric). Only one positive vector predicate is allowed, optionally combined with
 scalar predicates using `AND`; vector predicates inside `OR` or `NOT` are rejected.
 Writes and searches currently target the default partition.
@@ -118,7 +118,7 @@ go vet ./...
 MILVUS_TEST_ADDR=localhost:19530 go test -race ./pkg -run TestMilvusIntegration -v
 ```
 
-CI runs the lifecycle through both `database/sql` MySQL and pgx clients against a
+CI requires at least 90% statement coverage and runs the lifecycle through both `database/sql` MySQL and pgx clients against a
 standalone Milvus container, including authentication failures and rejected SQL.
 Unit tests use isolated session mocks and real local protocol listeners.
 

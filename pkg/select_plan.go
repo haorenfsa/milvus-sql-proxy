@@ -46,7 +46,7 @@ func planSelect(s *sqlparser.Select) (selectPlan, error) {
 		if !ok || !a.As.IsEmpty() {
 			return p, fmt.Errorf("projection aliases are not supported")
 		}
-		if sqlparser.String(a.Expr) == "count(*)" && len(s.SelectExprs) == 1 {
+		if strings.EqualFold(sqlparser.String(a.Expr), "count(*)") && len(s.SelectExprs) == 1 {
 			continue
 		}
 		c, ok := a.Expr.(*sqlparser.ColName)

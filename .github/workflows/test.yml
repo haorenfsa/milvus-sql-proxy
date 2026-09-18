@@ -13,7 +13,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -race ./...
+      - name: Unit tests and coverage gate
+        run: |
+          go test -race ./... -coverprofile=unit-coverage.out
+          go tool cover -func=unit-coverage.out | awk '/^total:/ { print; gsub("%", "", $3); if ($3 < 90) exit 1 }'
       - run: go vet ./...
   milvus:
     runs-on: ubuntu-latest
